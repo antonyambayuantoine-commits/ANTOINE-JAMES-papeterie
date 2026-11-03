@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Papeterie Anezi - Dettes</title>
+<style>
+*{box-sizing:border-box} body{font-family:Arial;background:#f0f2f5;margin:0;padding:12px}
+.card{background:white;padding:15px;border-radius:14px;max-width:520px;margin:auto;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
+h2{text-align:center;color:#1a73e8;margin:5px 0} input{width:100%;padding:12px;margin:5px 0;border-radius:8px;border:1px solid #ccc;font-size:15px}
+.row{display:flex;gap:8px} .btn{width:100%;padding:13px;border:none;border-radius:8px;font-weight:bold;margin-top:6px;font-size:15px;cursor:pointer}
+.btn-add{background:#1a73e8;color:white} .btn-wa{background:#25D366;color:white;padding:8px 14px;width:auto;border-radius:6px}
+.btn-paye{background:#e53935;color:white;padding:8px 14px;width:auto;border-radius:6px} .btn-restore{background:#ff9800;color:white;padding:8px 14px;width:auto;border-radius:6px}
+.total{background:#e8f0fe;padding:12px;border-radius:10px;text-align:center;font-weight:bold;font-size:18px;margin:10px 0}
+.item{border:1px solid #eee;padding:10px;border-radius:10px;margin:8px 0;background:#fafafa}
+.item.dette{border-left:5px solid #1a73e8} .item.paye{border-left:5px solid #4caf50;opacity:0.9}
+.actions{display:flex;gap:8px;margin-top:8px} .taux{background:#fff8e1;padding:10px;border-radius:8px;display:flex;align-items:center;gap:8px;margin-bottom:10px;font-weight:bold}
+.tabs{display:flex;gap:8px;margin:10px 0} .tab{flex:1;padding:10px;border-radius:8px;border:1px solid #1a73e8;background:white;color:#1a73e8;font-weight:bold}
+.tab.active{background:#1a73e8;color:white}
+</style>
+</head>
+<body>
+<div class="card">
+<h2>📒 Papeterie Anezi</h2>
+<div class="taux">Taux: 1$ = <input id="taux" type="number" value="2400" style="width:90px;margin:0"> FC</div>
+<div class="total" id="totalBox">Total: 0 FC</div>
+
+<input id="nom" placeholder="Nom client">
+<input id="tel" placeholder="Numéro WhatsApp (24397...)">
+<div class="row"><input id="fc" type="number" placeholder="Montant FC"><input id="usd" type="number" placeholder="Montant $"></div>
+<input id="produit" placeholder="Produit (BIC)">
+<button class="btn btn-add" onclick="ajouter()">+ Ajouter Dette</button>
+
+<div class="tabs">
+<button id="tabDettes" class="tab active" onclick="switchTab('dettes')">Dettes (<span id="countDettes">0</span>)</button>
+<button id="tabPayes" class="tab" onclick="switchTab('payes')">Payés (<span id="countPayes">0</span>)</button>
+</div>
+
+<div id="liste"></div>
+</div>
+
+<script>
+let dettes = JSON.parse(localStorage.getItem('anezi_final')||'[]');
+let currentTab='dettes';
+let taux=document.getElementById('taux'), fcInput=document.getElementById('fc'), usdInput=document.getElementById('usd');
+
+fcInput.addEventListener('input',()=>{ let fc=parseFloat(fcInput.value)||0; let t=parseFloat(taux.value)||2400; usdInput.value=fc?(fc/t).toFixed(2):''; });
+usdInput.addEventListener('input',()=>{ let usd=parseFloat(usdInput.value)||0; let t=parseFloat(taux.value)||2400; fcInput.value=usd?Math.round(usd*t):''; });
+
+function ajouter(){
+ let nom=document.getElementById('nom').value.trim();
+ let tel=document.getElementById('tel').value.trim().replace(/\D/g,'');
+ let fc=parseInt(fcInput.value)||0;
+ let prod=document.getElementById('produit').value.trim();
+ if(!nom||!fc) return alert('Mets nom et montant');
+ dettes.push({id:Date.now(),nom,tel,fc,prod,date:new Date().toLocaleDateString(),paye:false});
+ save(); clearForm(); afficher();
+}
+function clearForm(){ document.getElementById('nom').value='';document.getElementById('tel').value='';fcInput.value='';usdInput.value='';document.getElementById('produit').value=''; }
+function save(){ localStorage.setItem('anezi_final',JSON.stringify(dettes)); }
+function payer(id){
+ let d=dettes.find(x=>x.id==id); if(!d) return;
+ d.paye=true; d.datePaye=new Date().toLocaleDateString(); save(); afficher();
+}
+function restaurer(id){
+ let d=dettes.find(x=>x.id==id); d.paye=false; delete d.datePaye; save(); afficher();
+}
+function wa(id){
+ let d=dettes.find(x=>x.id==id);
+ let usd=(d.fc/(parseFloat(taux.value)||2400)).toFixed(2);
+ let msg=`Bonjour ${d.nom}, rappel de votre dette: ${d.fc} FC (${usd}$) pour ${d.prod} du ${d.date}. Merci de passer a la Papeterie Anezi.`;
+ let url = d.tel ? `https://wa.me/${d.tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+ window.open(url);
+}
+function switchTab(tab){ currentTab=tab; document.getElementById('tabDettes').classList.toggle('active',tab=='dettes'); document.getElementById('tabPayes').classList.toggle('active',tab=='payes'); afficher(); }
+function afficher(){
+ let liste=document.getElementById('liste'); liste.innerHTML='';
+ let tot=0, listFiltre;
+ if(currentTab=='dettes'){ listFiltre=dettes.filter(d=>!d.paye); } else { listFiltre=dettes.filter(d=>d.paye); }
+ listFiltre.slice().reverse().forEach(d=>{
+  if(!d.paye) tot+=d.fc;
+  let usd=(d.fc/(parseFloat(taux.value)||2400)).toFixed(2);
+  if(!d.paye){
+   liste.innerHTML+=`<div class="item dette"><div style="display:flex;justify-content:space-between"><b>${d.nom}</b><b>${d.fc} FC</b></div><div style="font-size:12px;color:#666">${usd} $ | ${d.prod} | ${d.date}<br>📱 ${d.tel||'Pas de num'}</div><div class="actions"><button class="btn-wa" onclick="wa(${d.id})">WhatsApp</button><button class="btn-paye" onclick="payer(${d.id})">Payé ✔️</button></div></div>`;
+  } else {
+   liste.innerHTML+=`<div class="item paye"><div style="display:flex;justify-content:space-between"><b>${d.nom} ✔️</b><b>${d.fc} FC</b></div><div style="font-size:12px;color:#666">${usd} $ | ${d.prod} | Payé le ${d.datePaye||d.date}</div><div class="actions"><button class="btn-restore" onclick="restaurer(${d.id})">Restaurer</button></div></div>`;
+  }
+ });
+ if(currentTab=='dettes'){
+  let t=parseFloat(taux.value)||2400;
+  document.getElementById('totalBox').innerHTML=`À recevoir: ${tot.toLocaleString()} FC<br>${(tot/t).toFixed(2)} $`;
+ } else {
+  let totalPaye = dettes.filter(d=>d.paye).reduce((s,d)=>s+d.fc,0);
+  document.getElementById('totalBox').innerHTML=`Déjà payé: ${totalPaye.toLocaleString()} FC`;
+ }
+ document.getElementById('countDettes').innerText=dettes.filter(d=>!d.paye).length;
+ document.getElementById('countPayes').innerText=dettes.filter(d=>d.paye).length;
+}
+taux.addEventListener('input', afficher);
+afficher();
+</script>
+</body>
+</html>
